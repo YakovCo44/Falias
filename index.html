@@ -468,38 +468,38 @@ const getDeck = room => {
 
     // Clue feed
     onSnapshot(
-    query(
-        collection(db,'rooms',state.roomId,'chat'),
-        orderBy('at','asc')
-    ),
-    snap => {
-        const currentRound = state.room?.round || 1
-        teamLog.innerHTML = ''
-        snap.forEach(d => {
-        const m = d.data()
-        if (m.round !== currentRound) return
-        const div = document.createElement('div')
-        div.className = 'msg' + (m.sys ? ' sys' : '')
-        div.innerHTML = m.sys ? `${m.text}` : `<span class="nick">${m.team} · ${m.nick}:</span>${m.text}`
-        teamLog.appendChild(div)
-        })
-        teamLog.scrollTop = teamLog.scrollHeight
-    }
-    )
+  query(collection(db,'rooms',state.roomId,'clue'), orderBy('at','asc')),
+  snap => {
+    clueLog.innerHTML = ''
+    snap.forEach(d => {
+      const m = d.data()
+      const div = document.createElement('div')
+      div.className = 'msg'
+      div.innerHTML = `<span class="nick">${m.nick}</span>${m.text}`
+      clueLog.appendChild(div)
+    })
+    clueLog.scrollTop = clueLog.scrollHeight
+  }
+)
 
 
     // Team chat feed (current round only)
-    onSnapshot(query(collection(db,'rooms',state.roomId,'chat'), where('round','==', state.room?.round || 1), orderBy('at','asc')), snap => {
-      teamLog.innerHTML = ''
-      snap.forEach(d => {
-        const m = d.data()
-        const div = document.createElement('div')
-        div.className = 'msg' + (m.sys ? ' sys' : '')
-        div.innerHTML = m.sys ? `${m.text}` : `<span class="nick">${m.team} · ${m.nick}:</span>${m.text}`
-        teamLog.appendChild(div)
-      })
-      teamLog.scrollTop = teamLog.scrollHeight
+    onSnapshot(
+  query(collection(db,'rooms',state.roomId,'chat'), orderBy('at','asc')),
+  snap => {
+    const currentRound = state.room?.round || 1
+    teamLog.innerHTML = ''
+    snap.forEach(d => {
+      const m = d.data()
+      if (m.round !== currentRound) return
+      const div = document.createElement('div')
+      div.className = 'msg' + (m.sys ? ' sys' : '')
+      div.innerHTML = m.sys ? `${m.text}` : `<span class="nick">${m.team} · ${m.nick}:</span>${m.text}`
+      teamLog.appendChild(div)
     })
+    teamLog.scrollTop = teamLog.scrollHeight
+  }
+)
   }
 
   // ===== RENDER HELPERS =====
@@ -588,7 +588,7 @@ const getDeck = room => {
     const colorsTaken = new Set(state.teams.map(x=>x.color).filter(Boolean))
     ;[...pawnColor.options].forEach(o=>{ o.disabled = colorsTaken.has(o.value) && o.value!==team?.color })
     
-    const showChooser = iAmExplainer && t.status==='running' && !team.color
+    const showChooser = iAmExplainer && t.status==='running' && !team?.color
     colorChooser.classList.toggle('hidden', !showChooser)
     chooseColorBtn.classList.toggle('disabled', !showChooser)
 
@@ -835,10 +835,10 @@ const getDeck = room => {
   })
 
   // ===== CUSTOM WORDS =====
-on($('#addWords'),'click', async ()=>{
+  on($('#addWords'),'click', async ()=>{
   const txt = $('#customWords').value.trim()
   if (!txt) return
-  const words = txt.split('').map(s=>s.trim()).filter(Boolean)
+  const words = txt.split('\n').map(s => s.trim()).filter(Boolean) // newline-based
   const s = await getDoc(state.roomRef)
   const r = s.data()
   const custom = (r.custom || []).concat(words)

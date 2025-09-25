@@ -1,0 +1,854 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Falias</title>
+  <style>
+    :root {
+      --red:#c4161c; --red2:#ed1c24; --bg:#fff; --fg:#222; --muted:#777;
+      --board:#b80f15; --space:#fff; --spaceFg:#d00; --accent:#ffd54f
+    }
+    *{box-sizing:border-box}
+    html,body{margin:0;padding:0;background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
+    button,input,select,textarea{font:inherit}
+    .app{display:grid;grid-template-rows:auto 1fr;min-height:100vh}
+    header{background:var(--red);color:#fff;padding:10px 14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+    header h1{margin:0;font-size:20px;letter-spacing:.5px}
+    header .spacer{flex:1}
+    header .pill{background:#fff1;border-radius:999px;padding:4px 10px;border:1px solid #ffffff33}
+
+    main{display:grid;grid-template-columns:1fr 360px;gap:12px;padding:12px}
+    @media (max-width: 980px){ main{grid-template-columns:1fr} }
+
+    /* Panels */
+    .panel{border:1px solid #eee;border-radius:12px;padding:12px;background:#fff;box-shadow:0 1px 6px #0000000a}
+    .row{display:flex;gap:8px;flex-wrap:wrap}
+    .row > *{flex:1}
+    .rightcol{display:grid;gap:12px}
+
+    /* Lobby / Room controls */
+    .lobby-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+    @media (max-width: 720px){ .lobby-grid{grid-template-columns:1fr} }
+
+    /* Board */
+    .board-wrap{display:grid;grid-template-rows:auto 1fr;gap:10px}
+    .board{background:var(--board);border-radius:16px;position:relative;padding:10px;min-height:280px}
+    .track{display:grid;grid-template-columns:repeat(18,1fr);grid-auto-rows:40px;gap:8px}
+    .space{background:var(--space);color:var(--spaceFg);border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:700}
+    .space[data-num="1"]{color:#0a7}
+    .space[data-num="8"]{color:#a50}
+    .center-badge{position:absolute;right:14px;bottom:14px;background:#fff;padding:8px 12px;border-radius:10px;border:2px dashed #0002}
+
+    /* Pawns */
+    .pawn-layer{position:absolute;left:10px;top:10px;right:10px;bottom:10px;pointer-events:none}
+    .pawn{position:absolute;width:18px;height:18px;border-radius:50%;border:2px solid #0003;transform:translate(-50%,-50%)}
+    .pawn[data-color="red"]{background:#ff3b3b}
+    .pawn[data-color="blue"]{background:#3b7bff}
+    .pawn[data-color="green"]{background:#28c76f}
+    .pawn[data-color="yellow"]{background:#f7d21b}
+    .pawn[data-color="purple"]{background:#a45bff}
+    .pawn[data-color="black"]{background:#333}
+    .legend{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+    .chip{display:flex;align-items:center;gap:6px;border:1px solid #eee;border-radius:999px;padding:2px 8px;background:#fff}
+    .dot{width:12px;height:12px;border-radius:50%}
+
+    /* Clue Console & Chats */
+    .clue-console{border:2px solid var(--red2);border-radius:12px;padding:10px;background:#fff8f8}
+    .clue-word{font-weight:700}
+    .hint{color:var(--muted);font-size:12px}
+    .chats{display:grid;grid-template-rows:auto 1fr auto;gap:8px;height:420px}
+    .chat-tabs{display:flex;gap:6px;flex-wrap:wrap}
+    .chat-tabs button{padding:6px 10px;border-radius:999px;border:1px solid #eee;background:#fafafa}
+    .chat-tabs button.active{background:var(--red);color:#fff}
+    .chat-log{border:1px solid #eee;border-radius:8px;padding:8px;overflow:auto}
+    .msg{margin:4px 0}
+    .msg .nick{font-weight:600;margin-right:6px}
+    .msg.sys{color:#555;font-style:italic}
+    .disabled{opacity:.55;pointer-events:none}
+    .danger{color:#b00020}
+    .ok{color:#0a7;font-weight:700}
+
+    /* Controls */
+    .controls{display:flex;gap:8px;flex-wrap:wrap}
+    .controls button{padding:8px 12px;border-radius:8px;border:1px solid #ddd;background:#fafafa}
+    .controls .primary{background:var(--red);color:#fff;border-color:#b00}
+
+    .tiny{font-size:12px}
+    .muted{color:#777}
+    .hidden{display:none !important}
+
+    /* Language voting strip */
+    .vote{display:flex;gap:8px;align-items:center}
+    .bar{height:8px;background:#eee;border-radius:6px;overflow:hidden;flex:1}
+    .bar > div{height:100%}
+    .bar .en{background:#0076ff}
+    .bar .he{background:#ff0076}
+  </style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>Falias</h1>
+    <div class="pill tiny" id="hdrRoom">No room</div>
+    <div class="pill tiny" id="hdrLang">Lang: -</div>
+    <div class="pill tiny" id="hdrYou">You: -</div>
+    <div class="spacer"></div>
+    <div class="tiny">Host tools appear only with correct PIN</div>
+  </header>
+
+  <main>
+    <!-- LEFT: Board + Clue Console -->
+    <section class="panel board-wrap" id="gamePanel">
+      <div class="row">
+        <div>
+          <div class="row">
+            <input id="nickname" placeholder="Nickname" />
+            <select id="voteLang">
+              <option value="en">English</option>
+              <option value="he">עברית</option>
+            </select>
+            <select id="selectTeam"></select>
+          </div>
+          <div class="row">
+            <input id="roomName" placeholder="Room name" />
+            <input id="hostPin" placeholder="Host PIN (only creator)" />
+          </div>
+          <div class="row">
+            <button id="createRoom" class="primary">Create room</button>
+            <button id="joinRoom">Join room (by ID)</button>
+          </div>
+        </div>
+        <div>
+          <div class="lobby panel">
+            <div class="row">
+              <input id="lobbyFilter" placeholder="Find room..." />
+              <button id="refreshLobby">Refresh</button>
+            </div>
+            <div id="lobbyList" class="tiny muted">No rooms yet</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel tiny">
+        <div class="row">
+          <div class="vote" style="flex:2">
+            <b>Language votes:</b>
+            <div class="bar"><div class="en" id="barEN" style="width:50%"></div></div>
+            <div class="bar"><div class="he" id="barHE" style="width:50%"></div></div>
+            <span id="voteCount">EN 0 · HE 0</span>
+          </div>
+          <div class="row" style="flex:1">
+            <button id="startGame" class="hidden primary">Start Game (host)</button>
+            <button id="addTeam" class="hidden">Add Team (host)</button>
+            <button id="removeTeam" class="hidden">Remove Team (host)</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="board" id="board">
+        <div class="track" id="track"></div>
+        <div class="pawn-layer" id="pawnLayer"></div>
+        <div class="center-badge tiny" id="turnBadge">Waiting…</div>
+        <div class="legend" id="legend"></div>
+      </div>
+
+      <div class="row">
+        <div class="panel clue-console" style="flex:2">
+          <div class="row">
+            <div>
+              <div><b>Explainer:</b> <span id="explainerName">—</span></div>
+              <div><b>Team:</b> <span id="explainerTeam">—</span></div>
+              <div><b>Timer:</b> <span id="timer">120</span>s</div>
+            </div>
+            <div>
+              <div><b>Card:</b> <span class="clue-word" id="cardIndex">—</span></div>
+              <div><b>Target #:</b> <span id="targetNum">—</span> <span class="tiny muted">(board number)</span></div>
+              <div><b>Word:</b> <span class="clue-word" id="secretWord">hidden</span></div>
+            </div>
+          </div>
+          <div class="row" id="colorChooser" class="hidden">
+            <select id="pawnColor">
+              <option>red</option><option>blue</option><option>green</option>
+              <option>yellow</option><option>purple</option><option>black</option>
+            </select>
+            <button id="chooseColor">Choose pawn color (explainer)</button>
+          </div>
+          <div class="row">
+            <input id="clueInput" placeholder="Type your clue (explainer only) then Enter" />
+          </div>
+          <div class="controls">
+            <button id="startTurn" class="primary">Start turn</button>
+            <button id="correctBtn">Correct (+1)</button>
+            <button id="passBtn">Pass (−1)</button>
+            <button id="pauseBtn" class="hidden">Pause (host)</button>
+            <button id="adjustBtn" class="hidden">Adjust (host)</button>
+          </div>
+          <div class="tiny hint" id="ruleMsg">Rules: no target word/parts, no “rhymes with / sounds like / starts with / ends with / change one letter”.</div>
+          <div class="tiny danger" id="errorMsg"></div>
+          <div class="tiny ok" id="okMsg"></div>
+        </div>
+
+        <!-- RIGHT: Chats -->
+        <div class="rightcol" style="flex:1">
+          <div class="panel">
+            <div><b>Clue Console (explainer feed)</b></div>
+            <div class="chats">
+              <div class="chat-log" id="clueLog"></div>
+              <div class="row">
+                <input id="clueOut" placeholder="Explainer writes clues here" />
+                <button id="clueSend">Send</button>
+              </div>
+              <div class="tiny muted">Only explainer can write during turn. Visible to all.</div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="chat-tabs" id="teamTabs"></div>
+            <div class="chats">
+              <div class="chat-log" id="teamLog"></div>
+              <div class="row">
+                <input id="teamOut" placeholder="Your team guess here" />
+                <button id="teamSend">Send</button>
+              </div>
+              <div class="tiny muted" id="teamHint">Your team chat is writable only during your turn or overtime.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel tiny">
+        <b>Custom words</b> · Paste any words (one per line). They’ll be folded into cards of 8.
+        <div class="row">
+          <textarea id="customWords" placeholder="Paste custom words here (auto-shuffled into deck)" style="width:100%;height:80px"></textarea>
+          <button id="addWords">Add</button>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- Firebase + App -->
+<script type="module">
+  // ===== FIREBASE BOOTSTRAP =====
+  // Enable Anonymous Auth and Firestore in your Firebase project.
+  import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js'
+  import { getAuth, signInAnonymously } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-auth.js'
+  import { getFirestore, doc, setDoc, getDoc, addDoc, collection, onSnapshot, updateDoc, serverTimestamp, query, orderBy, limit, getDocs, runTransaction, where } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js'
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyDBD0HpfT2xhk5FRwxO77XV_rNFdLT6inc",
+    authDomain: "falias.firebaseapp.com",
+    projectId: "falias",
+    storageBucket: "falias.firebasestorage.app",
+    messagingSenderId: "629523803279",
+    appId: "1:629523803279:web:cc612cf4bcc99c387f94fa",
+    measurementId: "G-2M05709LX9"
+  }
+
+  const app = initializeApp(firebaseConfig)
+  const auth = getAuth(app)
+  const db = getFirestore(app)
+  await signInAnonymously(auth)
+
+  // ===== STATE =====
+  const COLORS = ['red','blue','green','yellow','purple','black']
+  const $ = s => document.querySelector(s)
+  const on = (el,ev,fn) => el.addEventListener(ev,fn)
+
+  const state = {
+    myId: crypto.randomUUID(),
+    roomId: null, roomRef: null, room: null,
+    isHost: false,
+    teams: [], myTeamId: null,
+    track: [], round: 1,
+    timerHandle: null
+  }
+
+  // ===== UI refs =====
+  const hdrRoom = $('#hdrRoom'), hdrLang = $('#hdrLang'), hdrYou = $('#hdrYou')
+  const nickname = $('#nickname'), voteLang = $('#voteLang'), selectTeam = $('#selectTeam')
+  const roomName = $('#roomName'), hostPin = $('#hostPin')
+  const createRoom = $('#createRoom'), joinRoomBtn = $('#joinRoom'), refreshLobby = $('#refreshLobby'), lobbyList = $('#lobbyList')
+  const barEN = $('#barEN'), barHE = $('#barHE'), voteCount = $('#voteCount')
+  const startGameBtn = $('#startGame'), addTeamBtn = $('#addTeam'), removeTeamBtn = $('#removeTeam')
+  const boardEl = $('#track'), pawnLayer = $('#pawnLayer'), legend = $('#legend'), badge = $('#turnBadge')
+  const timerEl = $('#timer'), explainerName = $('#explainerName'), explainerTeam = $('#explainerTeam'), cardIndexEl = $('#cardIndex'), targetNumEl = $('#targetNum'), secretWordEl = $('#secretWord')
+  const colorChooser = $('#colorChooser'), pawnColor = $('#pawnColor'), chooseColorBtn = $('#chooseColor')
+  const startTurnBtn = $('#startTurn'), correctBtn = $('#correctBtn'), passBtn = $('#passBtn'), pauseBtn = $('#pauseBtn'), adjustBtn = $('#adjustBtn')
+  const clueInput = $('#clueInput'), errorMsg = $('#errorMsg'), okMsg = $('#okMsg')
+  const clueLog = $('#clueLog'), clueOut = $('#clueOut'), clueSend = $('#clueSend')
+  const teamTabs = $('#teamTabs'), teamLog = $('#teamLog'), teamOut = $('#teamOut'), teamSend = $('#teamSend'), teamHint = $('#teamHint')
+
+  // ===== BUILD TRACK 1..8 repeating (72 spaces) =====
+  const buildTrack = () => {
+    const arr = []
+    for (let i=0;i<72;i++) arr.push((i%8)+1)
+    state.track = arr
+    boardEl.innerHTML = ''
+    arr.forEach(n => {
+      const d = document.createElement('div')
+      d.className = 'space'
+      d.dataset.num = n
+      d.textContent = n
+      boardEl.appendChild(d)
+    })
+  }
+  buildTrack()
+
+  // ===== SEED WORDS =====
+  const seed = {
+    en: [
+      ['dog','apple','car','river','chair','guitar','painter','symphony'],
+      ['cat','banana','train','mountain','table','violin','driver','philosophy'],
+      ['book','ocean','computer','garden','spoon','library','statue','paradox']
+    ],
+    he: [
+      ['כלב','תפוח','מכונית','נהר','כיסא','גיטרה','צייר','סימפוניה'],
+      ['חתול','בננה','רכבת','הר','שולחן','כינור','נהג','פילוסופיה'],
+      ['ספר','אוקיינוס','מחשב','גן','כף','ספרייה','פסל','פרדוקס']
+    ]
+  }
+
+  const chunk = (list, size) => {
+  const out = []
+  for (let i=0;i<list.length;i+=size) out.push(list.slice(i,i+size))
+  return out
+}
+const getDeck = room => {
+  const base = seed[room?.lang || 'en']
+  const custom = chunk(room?.custom || [], 8)
+  return base.concat(custom)
+}
+
+  // ===== LOBBY =====
+  const listLobby = async () => {
+    lobbyList.textContent = 'Loading...'
+    const q = query(collection(db,'rooms'), orderBy('created','desc'), limit(25))
+    const snap = await getDocs(q)
+    if (snap.empty){ lobbyList.textContent = 'No rooms yet' ; return }
+    let html = ''
+    snap.forEach(d => {
+      const r = d.data()
+      html += `<div class="row" style="align-items:center">
+        <div><b>${r.name}</b> · ${r.lang?.toUpperCase()||'-'} · teams ${r.teams?.length||0} · ${r.status||'waiting'} · id: <code>${d.id}</code></div>
+        <button data-id="${d.id}" class="joinBtn">Join</button>
+      </div>`
+    })
+    lobbyList.innerHTML = html
+    lobbyList.querySelectorAll('.joinBtn').forEach(btn => {
+    btn.onclick = async () => {
+        const name = await ensureNickname()
+        if (!name) return
+        joinRoom(btn.dataset.id)
+    }
+})
+  }
+  on(refreshLobby,'click',listLobby)
+  listLobby()
+
+  // ===== ROOM CREATE / JOIN =====
+  const create = async () => {
+  const name = await ensureNickname()
+    if (!name) return
+    if (!roomName.value.trim()){ alert('Set room name') ; return }
+    const ref = await addDoc(collection(db,'rooms'), {
+      name: roomName.value.trim(),
+      lang: 'en', // will be set from votes when host starts game
+      status: 'seating',
+      created: serverTimestamp(),
+      hostPin: hostPin.value.trim() || null,
+      round: 1,
+      turn: null,
+      custom: [],
+      teams: [
+        { id: 't1', name: 'Team 1', color: null, pos: 0, score: 0 },
+        { id: 't2', name: 'Team 2', color: null, pos: 0, score: 0 }
+      ]
+    })
+    await enterAsPlayer(ref.id, true)
+  }
+
+  // NEW: ensure we have a nickname, prompt if the input is empty
+    const ensureNickname = async () => {
+    let name = nickname.value.trim()
+    if (!name) {
+        name = prompt('Enter nickname')
+        if (!name) return null
+        nickname.value = name
+    }
+    hdrYou.textContent = 'You: ' + name
+    return name
+    }
+
+    const joinRoom = async id => {
+    const name = await ensureNickname()
+    if (!name) return
+    const ref = doc(db,'rooms', id)
+    const snap = await getDoc(ref)
+    if (!snap.exists()){ alert('Room not found') ; return }
+    await enterAsPlayer(id, false)
+    }
+
+  const enterAsPlayer = async (roomId, isCreator) => {
+    state.roomId = roomId
+    state.roomRef = doc(db,'rooms',roomId)
+    const me = { id: state.myId, nick: nickname.value.trim(), teamId: 't1', vote: voteLang.value, created: serverTimestamp() }
+    await setDoc(doc(db,'rooms',roomId,'players',state.myId), me)
+    hdrYou.textContent = 'You: ' + me.nick
+    subscribeRoom()
+    if (isCreator){
+      alert('Room created. Share ID from lobby list with friends.')
+    }
+  }
+
+  on(createRoom,'click',create)
+  on(joinRoomBtn,'click', async ()=> {
+    const name = await ensureNickname()
+    if (!name) return
+    const id = prompt('Enter room id from lobby')
+    if (id) joinRoom(id)
+    })
+
+  // Update my vote/team selection
+  on(voteLang,'change', async ()=>{
+    if (!state.roomRef) return
+    await updateDoc(doc(db,'rooms',state.roomId,'players',state.myId), { vote: voteLang.value })
+  })
+
+  on(selectTeam,'change', async ()=>{
+    if (!state.roomRef) return
+    state.myTeamId = selectTeam.value
+    await updateDoc(doc(db,'rooms',state.roomId,'players',state.myId), { teamId: state.myTeamId })
+  })
+
+  // ===== SUBSCRIBE ROOM =====
+  const subscribeRoom = () => {
+    onSnapshot(state.roomRef, async snap => {
+      state.room = snap.data()
+      hdrRoom.textContent = 'Room: ' + state.room.name
+      hdrLang.textContent = 'Lang: ' + (state.room.lang?.toUpperCase() || '-')
+
+      // Host controls visibility
+      state.isHost = !!hostPin.value.trim() && state.room?.hostPin === hostPin.value.trim()
+      startGameBtn.classList.toggle('hidden', !state.isHost || state.room.status!=='seating')
+      addTeamBtn.classList.toggle('hidden', !state.isHost || state.room.status!=='seating')
+      removeTeamBtn.classList.toggle('hidden', !state.isHost || state.room.status!=='seating')
+      pauseBtn.classList.toggle('hidden', !state.isHost)
+      adjustBtn.classList.toggle('hidden', !state.isHost)
+
+      // Teams
+      state.teams = state.room.teams || []
+      if (!state.myTeamId && state.teams.length) state.myTeamId = state.teams[0].id
+      renderTeamSelect()
+      renderLegend()
+      renderPawns()
+
+      // Turn UI
+      updateTurnUI()
+
+      // RTL per room language
+      const rtl = state.room.lang === 'he'
+        document.documentElement.dir = 'ltr'     // keep grid/layout LTR
+        document.body.classList.toggle('rtl', rtl)
+
+    })
+
+    // Players for votes
+    onSnapshot(collection(db,'rooms',state.roomId,'players'), snap => {
+      let en=0, he=0
+      snap.forEach(d => { const v=d.data().vote ; if (v==='he') he++ ; else en++ })
+      const total = Math.max(1,en+he)
+      barEN.style.width = (en*100/total)+'%'
+      barHE.style.width = (he*100/total)+'%'
+      voteCount.textContent = `EN ${en} · HE ${he}`
+      // fill team select with up-to-date teams
+      renderTeamSelect()
+    })
+
+    // Clue feed
+    onSnapshot(
+  query(collection(db,'rooms',state.roomId,'clue'), orderBy('at','asc')),
+  snap => {
+    clueLog.innerHTML = ''
+    snap.forEach(d => {
+      const m = d.data()
+      const div = document.createElement('div')
+      div.className = 'msg'
+      div.innerHTML = `<span class="nick">${m.nick}</span>${m.text}`
+      clueLog.appendChild(div)
+    })
+    clueLog.scrollTop = clueLog.scrollHeight
+  }
+)
+
+
+    // Team chat feed (current round only)
+    onSnapshot(
+  query(collection(db,'rooms',state.roomId,'chat'), orderBy('at','asc')),
+  snap => {
+    const currentRound = state.room?.round || 1
+    teamLog.innerHTML = ''
+    snap.forEach(d => {
+      const m = d.data()
+      if (m.round !== currentRound) return
+      const div = document.createElement('div')
+      div.className = 'msg' + (m.sys ? ' sys' : '')
+      div.innerHTML = m.sys ? `${m.text}` : `<span class="nick">${m.team} · ${m.nick}:</span>${m.text}`
+      teamLog.appendChild(div)
+    })
+    teamLog.scrollTop = teamLog.scrollHeight
+  }
+)
+  }
+
+  // ===== RENDER HELPERS =====
+  const renderTeamSelect = () => {
+    selectTeam.innerHTML = ''
+    state.teams.forEach(t => {
+      const opt = document.createElement('option')
+      opt.value = t.id
+      opt.textContent = t.name
+      if (t.id===state.myTeamId) opt.selected = true
+      selectTeam.appendChild(opt)
+    })
+  }
+
+  const spaceCenter = idx => {
+    // compute grid coordinates of the idx-th space and return pixel position
+    const cell = boardEl.children[idx]
+    const boardRect = boardEl.getBoundingClientRect()
+    const cellRect = cell.getBoundingClientRect()
+    const x = (cellRect.left + cellRect.width/2) - boardRect.left
+    const y = (cellRect.top + cellRect.height/2) - boardRect.top
+    return {x,y}
+  }
+
+  const renderPawns = () => {
+    pawnLayer.innerHTML = ''
+    state.teams.forEach(t => {
+      const pos = Math.max(0, Math.min(71, t.pos||0))
+      const {x,y} = spaceCenter(pos)
+      const p = document.createElement('div')
+      p.className = 'pawn'
+      p.dataset.color = t.color || 'red'
+      p.style.left = x+'px'
+      p.style.top = y+'px'
+      p.title = `${t.name} @ ${pos+1}`
+      pawnLayer.appendChild(p)
+    })
+  }
+
+  const renderLegend = () => {
+    legend.innerHTML = state.teams.map(t => `<span class="chip"><span class="dot" style="background:${colorHex(t.color||'red')}"></span>${t.name}: ${t.score||0}</span>`).join(' ')
+  }
+
+  const colorHex = c => ({red:'#ff3b3b',blue:'#3b7bff',green:'#28c76f',yellow:'#f7d21b',purple:'#a45bff',black:'#333'})[c] || '#888'
+
+  // ===== GAME FLOW =====
+  const teamName = id => state.teams.find(t=>t.id===id)?.name || id
+
+  const autoDiceStart = async () => {
+    // roll d6 per team until unique highest
+    const rolls = state.teams.map(t => ({ id:t.id, roll: Math.floor(Math.random()*6)+1 }))
+    const max = Math.max(...rolls.map(r=>r.roll))
+    const tied = rolls.filter(r=>r.roll===max)
+    if (tied.length>1) return autoDiceStart()
+    const starter = tied[0].id
+    const target = state.track[state.teams.find(t=>t.id===starter).pos]
+    await updateDoc(state.roomRef, { turn: {
+      teamId: starter, status:'waiting', secs:120, targetNum: target, passes:0, correct:0, cardIdx:null, word:null, overtime:false, explainerId:null, explainerNick:null
+    }})
+    await addSystem(`${teamName(starter)} won the dice roll and will start`)
+  }
+
+  const updateTurnUI = () => {
+    const t = state.room?.turn
+    if (!t){
+        badge.textContent = 'Waiting… (host: click Start Game)'
+        startTurnBtn.classList.add('disabled')
+        correctBtn.classList.add('disabled')
+        passBtn.classList.add('disabled')
+        clueInput.disabled = true
+        secretWordEl.textContent = 'hidden'
+        return
+    }
+    badge.textContent = `${teamName(t.teamId)} · ${t.status?.toUpperCase()}`
+    timerEl.textContent = t.secs ?? 120
+    targetNumEl.textContent = t.targetNum ?? '—'
+    cardIndexEl.textContent = t.cardIdx ?? '—'
+    explainerName.textContent = t.explainerNick || '—'
+    explainerTeam.textContent = teamName(t.teamId)
+
+    const iAmExplainer = t.explainerId === state.myId
+    secretWordEl.textContent = t.status==='running' && iAmExplainer ? (t.word||'') : 'hidden'
+
+    // show color chooser if first turn for team and you're explainer
+    const team = state.teams.find(x=>x.id===t.teamId)
+    const colorsTaken = new Set(state.teams.map(x=>x.color).filter(Boolean))
+    ;[...pawnColor.options].forEach(o=>{ o.disabled = colorsTaken.has(o.value) && o.value!==team?.color })
+    
+    const showChooser = iAmExplainer && t.status==='running' && !team?.color
+    colorChooser.classList.toggle('hidden', !showChooser)
+    chooseColorBtn.classList.toggle('disabled', !showChooser)
+
+
+    startTurnBtn.classList.toggle('disabled', !(iAmExplainer && t.status==='waiting'))
+    correctBtn.classList.toggle('disabled', !(iAmExplainer && t.status==='running'))
+    passBtn.classList.toggle('disabled', !(iAmExplainer && t.status==='running'))
+    clueInput.disabled = !(iAmExplainer && t.status!=='ended')
+    }
+
+  const pickExplainer = async teamId => {
+    const ps = await getDocs(collection(db,'rooms',state.roomId,'players'))
+    const arr = []
+    ps.forEach(d => { const p=d.data(); if (p.teamId===teamId) arr.push(p) })
+    if (!arr.length) return null
+    const last = state.room?.turn?.explainerId
+    const pool = arr.filter(p => p.id!==last)
+    return (pool.length?pool:arr)[Math.floor(Math.random()* (pool.length?pool.length:arr.length))]
+  }
+
+  const startTurn = async () => {
+  const t = state.room?.turn
+    if (!t){
+        alert('Waiting for host to click “Start Game” (no active turn yet)')
+        return
+    }
+    if (t.status!=='waiting') return
+    const expl = await pickExplainer(t.teamId)
+    if (!expl){ alert('No players in team') ; return }
+    const deck = getDeck(state.room)
+    const target = t.targetNum || 1
+    const nextCard = Math.floor(Math.random()*deck.length)
+    const word = deck[nextCard][target-1]
+    await updateDoc(state.roomRef, { turn: {
+        ...t, status:'running', secs:120, explainerId: expl.id, explainerNick: expl.nick, cardIdx: nextCard, word, passes:0, correct:0, overtime:false
+    }})
+    tickTimer()
+    await addSystem(`${expl.nick} is explaining for ${teamName(t.teamId)} — target #${target}`)
+    }
+
+  const tickTimer = () => {
+    clearInterval(state.timerHandle)
+    state.timerHandle = setInterval(async () => {
+      const t = (await getDoc(state.roomRef)).data().turn
+      if (!t || t.status!=='running'){ clearInterval(state.timerHandle) ; return }
+      const left = (t.secs||120)-1
+      await updateDoc(state.roomRef, { 'turn.secs': left })
+      if (left<=0){
+        clearInterval(state.timerHandle)
+        await updateDoc(state.roomRef, { 'turn.status': 'overtime', 'turn.overtime': true })
+        await addSystem('Time! Overtime open: all teams may guess in chat')
+      }
+    }, 1000)
+  }
+
+  const endTurnAndAdvance = async (teamId, delta) => {
+    // move pawn by delta; clamp to [0,71]
+    const teams = structuredClone(state.room.teams)
+    const t = teams.find(x=>x.id===teamId)
+    t.pos = Math.max(0, Math.min(71, (t.pos||0) + delta))
+    t.score = Math.max(0, (t.score||0) + delta)
+    const idx = teams.findIndex(x=>x.id===teamId)
+    const nextId = teams[(idx+1)%teams.length].id
+    const nextTarget = state.track[teams.find(x=>x.id===nextId).pos]
+    await updateDoc(state.roomRef, {
+      teams,
+      round: (state.room.round||1),
+      turn: { teamId: nextId, status:'waiting', secs:120, targetNum: nextTarget, passes:0, correct:0, cardIdx:null, word:null, overtime:false, explainerId:null, explainerNick:null }
+    })
+    await addSystem(`${teamName(teamId)} moved ${delta} steps`)
+    checkWin(t)
+  }
+
+  const checkWin = async t => {
+    if ((t.pos||0)>=71){
+      await addSystem(`🏁 ${t.name} reached the finish and wins!`)
+      await updateDoc(state.roomRef, { status:'ended', 'turn.status':'ended' })
+    }
+  }
+
+  // ===== RULES =====
+  const norm = s => (s||'').toLowerCase().normalize('NFKD').replace(/[\u0591-\u05C7\u0300-\u036f]/g,'')
+  const violates = (clue, target) => {
+    const c = norm(clue), w = norm(target)
+    if (c.includes(w)) return 'Clue contains target or part of it'
+    const banned = /(rhymes\s+with|sounds\s+like|starts?\s+with|ends?\s+with|first\s+letter|change\s+one\s+letter|like\s+.*\s+but\s+with)/i
+    if (banned.test(clue)) return 'No rhymes/sounds-like/starts-with hints'
+    return null
+  }
+
+  // ===== HOST BUTTONS =====
+  on(startGameBtn,'click', async ()=>{
+    if (!state.isHost) return
+    // set language to majority vote
+    const ps = await getDocs(collection(db,'rooms',state.roomId,'players'))
+    let en=0, he=0
+    ps.forEach(d=>{ const v=d.data().vote ; if (v==='he') he++ ; else en++ })
+    const lang = he>en ? 'he' : 'en'
+    await updateDoc(state.roomRef, { lang, status:'playing' })
+    await autoDiceStart()
+  })
+
+  on(addTeamBtn,'click', async ()=>{
+    if (!state.isHost) return
+    const teams = structuredClone(state.room.teams)
+    if (teams.length>=6) return alert('Max 6 teams')
+    const id = 't'+(teams.length+1)
+    teams.push({ id, name: 'Team '+(teams.length+1), color: null, pos: 0, score: 0 })
+    await updateDoc(state.roomRef, { teams })
+  })
+
+  on(removeTeamBtn,'click', async ()=>{
+    if (!state.isHost) return
+    const teams = structuredClone(state.room.teams)
+    if (teams.length<=2) return alert('Need at least 2 teams')
+    teams.pop()
+    await updateDoc(state.roomRef, { teams })
+  })
+
+  on(pauseBtn,'click', async ()=>{
+    if (!state.isHost) return
+    const t = (await getDoc(state.roomRef)).data().turn
+    if (!t) return
+    const status = t.status==='paused' ? 'running' : 'paused'
+    await updateDoc(state.roomRef, { 'turn.status': status })
+    await addSystem(`Host toggled ${status}`)
+  })
+
+  on(adjustBtn,'click', async ()=>{
+    if (!state.isHost) return
+    const teamId = prompt('Adjust which team id? e.g., t1')
+    const delta = parseInt(prompt('Delta steps (e.g., +1 or -1)'),10) || 0
+    if (!teamId || !delta) return
+    await endTurnAndAdvance(teamId, delta)
+    await addSystem(`Host adjusted ${teamName(teamId)} by ${delta} steps`)
+  })
+
+  // ===== EXPLAINER COLOR CHOICE =====
+  on(chooseColorBtn,'click', async ()=>{
+  const t = state.room?.turn
+  if (!t || !t.teamId){
+    alert('No active turn yet. Host: Start Game, then Start turn')
+    return
+  }
+  const teams = structuredClone(state.room?.teams || [])
+  const teamIdx = teams.findIndex(x => x.id === t.teamId)
+  if (teamIdx < 0){ alert('Team not found'); return }
+
+  const chosen = pawnColor.value
+  if (teams.some(x => x.color === chosen && x.id !== t.teamId)){
+    alert('That color is already taken')
+    return
+  }
+  teams[teamIdx].color = chosen
+  await updateDoc(state.roomRef, { teams })
+  renderLegend()
+  renderPawns()
+})
+
+
+  // ===== TURN BUTTONS =====
+  on(startTurnBtn,'click', startTurn)
+
+  on(correctBtn,'click', async ()=>{
+    const t = (await getDoc(state.roomRef)).data().turn
+    if (!t || t.status!=='running') return
+    await updateDoc(state.roomRef, { 'turn.correct': (t.correct||0)+1 })
+    okMsg.textContent = 'Counted +1'
+    setTimeout(()=> okMsg.textContent='', 900)
+  })
+
+  on(passBtn,'click', async ()=>{
+    const t = (await getDoc(state.roomRef)).data().turn
+    if (!t || t.status!=='running') return
+    await updateDoc(state.roomRef, { 'turn.passes': (t.passes||0)+1 })
+    okMsg.textContent = 'Counted −1'
+    setTimeout(()=> okMsg.textContent='', 900)
+  })
+
+  // ===== CLUE CONSOLE CHAT =====
+  const addClueMsg = async text => {
+    if (!state.roomId) return
+    return addDoc(collection(db,'rooms',state.roomId,'clue'), {
+        at: serverTimestamp(), text, nick: nickname.value.trim()
+    })
+    }
+  on(clueSend,'click', async ()=>{
+    const t = (await getDoc(state.roomRef)).data().turn
+    if (!t || !(t.status==='running' && t.explainerId===state.myId)) return
+    const txt = clueOut.value.trim()
+    if (!txt) return
+    const v = violates(txt, t.word)
+    if (v){ errorMsg.textContent = v ; setTimeout(()=> errorMsg.textContent='', 1200) ; return }
+    await addClueMsg(txt)
+    clueOut.value = ''
+  })
+
+  // ===== TEAM CHAT & OVERTIME GUESS =====
+  const addTeamMsg = async (teamId, text, sys=false) => {
+    if (!state.roomId) return
+    return addDoc(collection(db,'rooms',state.roomId,'chat'), {
+        at: serverTimestamp(),
+        text,
+        nick: sys ? 'System' : nickname.value.trim(),
+        team: sys ? '—' : teamName(teamId),
+        sys,
+        round: (state.room?.round || 1)
+    })
+    }
+  const addSystem = text => addTeamMsg(null, text, true)
+
+  const writableNow = async () => {
+    const t = (await getDoc(state.roomRef)).data().turn
+    if (!t) return false
+    if (t.status==='overtime') return true
+    return state.myTeamId === t.teamId
+  }
+
+  on(teamSend,'click', async ()=>{
+    const txt = teamOut.value.trim()
+    if (!txt) return
+    if (!(await writableNow())) return
+    await addTeamMsg(state.myTeamId, txt)
+    teamOut.value = ''
+
+    const t = (await getDoc(state.roomRef)).data().turn
+    if (!t || !(t.status==='running' || t.status==='overtime')) return
+    if (norm(txt) === norm(t.word)){
+      await addSystem(`${teamName(state.myTeamId)} guessed the word "${t.word}" first!`)
+      const delta = (t.correct||0) - (t.passes||0) + 1
+      // advance and open new round (chat wipe via round++)
+      await updateDoc(state.roomRef, { round: (state.room.round||1)+1 })
+      await endTurnAndAdvance(t.teamId, delta)
+    }
+  })
+
+  // ===== HOTKEYS =====
+  on(document,'keydown', e => {
+    if (e.key==='Enter'){
+      if (document.activeElement===clueOut) clueSend.click()
+      else if (document.activeElement===teamOut) teamSend.click()
+    }
+    if (e.key===' '){ e.preventDefault() ; passBtn.click() }
+  })
+
+  // ===== CUSTOM WORDS =====
+  on($('#addWords'),'click', async ()=>{
+  const txt = $('#customWords').value.trim()
+  if (!txt) return
+  const words = txt.split('\n').map(s => s.trim()).filter(Boolean) // newline-based
+  const s = await getDoc(state.roomRef)
+  const r = s.data()
+  const custom = (r.custom || []).concat(words)
+  await updateDoc(state.roomRef, { custom })
+  $('#customWords').value = ''
+  await addSystem('Custom words added into deck')
+})
+    $('#customWords').value = ''
+    await addSystem('Custom words added into deck')
+</script>
+</body>
+</html>
+
